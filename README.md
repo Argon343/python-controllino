@@ -5,3 +5,5 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
 # controllino-stage
+
+Run `make` to test and `make install` to install.
