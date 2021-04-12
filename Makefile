@@ -17,10 +17,6 @@ venv:
 	# If virtualenv doesn't exist, create it, then fetch dependencies.
 	[ -d $(VENV) ] || virtualenv $(VENV)
 	$(PIP) install -r requirements.txt
-	. $(VENV)/bin/activate; \
-	cd ${PYLAB_MATLAB_PATH}/extern/engines/python; \
-	python setup.py install; \
-	deactivate
 	$(PYTHON) setup.py install
 
 .PHONY: sphinx
