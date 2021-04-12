@@ -30,11 +30,6 @@ verbose = False
 # TODO Forward ERR_ commands to the respective futures!
 
 
-# SPEC Logging can only be ended once it has started.
-
-# TODO But there is no way to know when logging has started...
-
-
 class ControllinoError(Exception):
     """Raise on server-side runtime error."""
 
@@ -45,8 +40,26 @@ class ControllinoError(Exception):
 # Based on
 # https://github.com/araffin/python-arduino-serial/blob/master/robust_serial/threads.py
 class Base:
+    """Base API for serial devices running 8tronix Controllino
+    protocoll.
 
-    def __init__(self, ser: serial.Serial, error_callback: Callable = None) -> None:
+    Controlls two daemons, ``_message_thread`` and ``_command_thread``,
+    which handle incoming and outgoing messages, respectively.
+    """
+
+    def __init__(self,
+                 ser: serial.Serial,
+                 error_callback: Optional[Callable[[Exception], None]] = None) -> None:
+        """Args:
+            ser: The underlying serial device
+            error_callback:
+                Function to call on critical server-side error
+
+        By default, the error callback will write to the API's error
+        queue, which should be checked regularly by the consumer using
+        ``process_errors``. By *critical* server-side error we mean an
+        error that caused one of the daemon threads to terminate.
+        """
         self._serial = ser
         self._serial_lock = threading.Lock()
         self._pending = []  # Commands waiting for a reply.
@@ -56,22 +69,32 @@ class Base:
         self._stop_event = threading.Event()
         if error_callback is None:
             def error_callback(e): return self._error_queue.put(e)
-        self._message_thread = MessageThread(self._serial,
-                                             self._serial_lock,
-                                             self._pending,
-                                             self._pending_lock,
-                                             self._stop_event,
-                                             error_callback)
-        self._command_thread = CommandThread(self._serial,
-                                             self._serial_lock,
-                                             self._cmd_queue,
-                                             self._stop_event,
-                                             error_callback)
+        self._message_thread = _MessageThread(self._serial,
+                                              self._serial_lock,
+                                              self._pending,
+                                              self._pending_lock,
+                                              self._stop_event,
+                                              error_callback)
+        self._command_thread = _CommandThread(self._serial,
+                                              self._serial_lock,
+                                              self._cmd_queue,
+                                              self._stop_event,
+                                              error_callback)
         self._id_manager = _id.IdManager()
         self._message_thread.start()
         self._command_thread.start()
 
-    def submit(self, cmd) -> Tuple[Future, ...]:
+    def submit(self, cmd: Command) -> tuple[Future, ...]:
+        """Submit a command.
+
+        Returns:
+            The futures used to handle the commands results
+
+        Raises:
+            RuntimeError:
+                If submitting the commnads would exceeded the maximum
+                number of jobs
+        """
         cmd.job = self._id_manager.pop()
 
         with self._pending_lock:
@@ -80,7 +103,17 @@ class Base:
 
         return cmd.future
 
-    def process_errors(self, abort=False):
+    def process_errors(self, abort: bool = False) -> None:
+        """Check for server-side errors that led to the termination of
+        the command or message daemon.
+
+        Args:
+            abort: Terminate all daemons on failure if ``True``
+
+        Raises:
+            Exception:
+                The first error in the error queue, if available
+        """
         try:
             e = self._error_queue.get_nowait()
         except queue.Empty:
@@ -90,7 +123,16 @@ class Base:
             self._stop_event.set()
         raise e
 
-    def open(self) -> Tuple[Future]:
+    def open(self) -> tuple[Future]:
+        """Query readiness from the client device.
+
+        Returns:
+            A ``Future`` which is done once readiness is signalled.
+
+        Raises:
+            Exception:
+                The first error in the error queue, if available
+        """
         # Create a pending `CmdReady`, but don't queue it. We're waiting
         # for the device to signal readiness.
         cmd = CmdReady()
@@ -106,6 +148,12 @@ class Base:
 
 
 class Controllino(Base):
+    """Utility API class which offers class methods for command
+    submission.
+
+    See the documentation of ``Base.submit`` and of the respective
+    ``Cmd*`` classes for details.
+    """
 
     def get_signal(self, pin: str) -> Future:
         return self.submit(CmdGetSignal(pin))
@@ -141,15 +189,33 @@ class Controllino(Base):
 
 # Based on
 # https://github.com/araffin/python-arduino-serial/blob/master/robust_serial/threads.py
-class MessageThread(threading.Thread):
+class _MessageThread(threading.Thread):
+    """Daemon thread for handling incoming messages from the client
+    device.
+    """
 
+    # FIXME Don't share ``pending`` and ``pending_lock`` with the
+    # ``Base`` object. Instead, encapsulate ``pending(_lock)?`` and use
+    # a ``push`` method to thread-safely enqueue commands.
     def __init__(self,
                  ser: serial.Serial,
                  serial_lock: threading.Lock,
                  pending: list[Command],
                  pending_lock: threading.Lock,
                  stop_event: threading.Event,
-                 error_callback: Callable):
+                 error_callback: Optional[Callable[[Exception], None]] = None) -> None:
+        """Args:
+            ser: The underlying serial device
+            serial_lock:
+                A lock for thread-safe access to the underlying serial
+                device
+            pending:
+                A list of pending responses from the client device that
+                the daemon must handle
+            stop_event: An event for terminating the daemon
+            error_callback:
+                A callback function for critical errors in this daemon
+        """
         super().__init__()
         self.daemon = True
 
@@ -226,14 +292,27 @@ class MessageThread(threading.Thread):
 
 # Based on
 # https://github.com/araffin/python-arduino-serial/blob/master/robust_serial/threads.py
-class CommandThread(threading.Thread):
+class _CommandThread(threading.Thread):
+    """Daemon thread for handling outgoing messages to the client
+    device.
+    """
 
     def __init__(self,
                  ser: serial.Serial,
                  serial_lock: threading.Lock,
                  cmd_queue: queue.Queue,
                  stop_event: threading.Event,
-                 error_callback):
+                 error_callback: Optional[Callable[[Exception], None]] = None) -> None:
+        """Args:
+            ser: The underlying serial device
+            serial_lock:
+                A lock for thread-safe access to the underlying serial
+                device
+            cmd_queue: A queue of submitted commands
+            stop_event: An event for terminating the daemon
+            error_callback:
+                A callback function for critical errors in this daemon
+        """
         super().__init__()
         self.daemon = True
 
@@ -256,14 +335,32 @@ class CommandThread(threading.Thread):
             self._error_callback(e)
 
 
-def _encode(cmd: dict[str, str]) -> str:
-    msg = json.dumps(cmd, cls=_id.JsonEncoder)
+def _encode(data: dict) -> bytes:
+    """Encode a message into raw bytes according to the Controllino
+    protocol.
+
+    Args:
+        data: The message to be encoded
+
+    """
+    msg = json.dumps(data, cls=_id.JsonEncoder)
     msg += '\r\n'
     msg = msg.encode('utf-8')
     return msg
 
 
 class Future:
+    """Class that represents future results of pending commands on
+    daemon threads.
+
+    A future has a *result*, which may be accessed using ``result()``.
+    Is is set (usually by the daemon thread) using ``set_result()``,
+    in which case the future is marked as *done*.
+
+    If the computation on the daemon thread has raised an error instead,
+    the daemon uses ``set_error()`` to move the error into the future.
+    In this case the error is reraised if ``result()`` is called.
+    """
 
     def __init__(self):
         self._result = None
@@ -271,25 +368,66 @@ class Future:
         self._done = threading.Event()
 
     def result(self) -> Any:
+        """Get the result of the future.
+
+        Returns:
+            The result of the future, provided it is set
+
+        Raises:
+            Exception:
+                The error that occured during computation, provided it
+                was set
+
+        Shall only be accessed when the future is done. Calling this
+        method before the future is done is undefined behavior.
+        """
         if self._error is not None:
             raise self._error
         return self._result
 
     def set_result(self, result: Any = None) -> None:
+        """Set the result of the future and mark the future as done.
+
+        Args:
+            result: The result
+
+        The result will be return when ``result`` is called.
+        """
         self._result = result
         self._done.set()
 
     def set_error(self, error: Exception) -> None:
+        """Set an error as the result of the future and mark the future
+        as done.
+
+        Args:
+            error: The error
+
+        The error will be raised when ``result`` is called. Note
+        that despite representing a failed task, the future will be
+        marked as *done* when calling ``set_error``.
+        """
         self._error = error
         self._done.set()
 
     def wait(self, timeout: Optional[float] = None) -> bool:
+        """Thread-safely wait until the future is done.
+
+        Args:
+            timeout: Timeout in seconds
+
+        Returns:
+            ``True`` if and only if the future is done
+
+        If ``timeout`` is specified, the method will return after
+        ``timeout`` seconds. Otherwise, the function will halt until the
+        future is done.
+        """
         return self._done.wait(timeout)
 
     def done(self) -> bool:
-        """
-
-        Thread-safe.
+        """Thread-safely return ``True`` if and only if the future is
+        done.
         """
         return self.wait(-1)
 
@@ -300,24 +438,52 @@ class Future:
 # commands {{{
 
 
-class Command(abc.ABC):
+class Command(abc.ABC):  # FIXME Should be called AbstractCommand...?
+    """ABC for commands issued to client device.
+
+    Attributes:
+        job (Optional[_id.Id]): The job id of the command
+
+    Commands are identified (on the server and the client) using their
+    manually assigned *job id*, which must be unique in the sense that
+    at any point in time, every job id occurs in *at most* one command.
+
+    We use the ``Command`` objects not just to send data to the client
+    device, but also to track the result of the computation on the
+    client. The ``futures`` property, which consists of one or more
+    ``Future`` objects, is used to track the result.
+
+    The usual interpretation of ``future`` is: If ``future`` is done,
+    then this means that the command was executed (not necessarily
+    successfully), the reply from the client device has arrived on the
+    server and the result or error of the computation on the client
+    device was set as result of the future.
+    """
 
     def __init__(self):
         self._future = Future()
-        self.job = None
+        self.job: Optional[_id.Id] = None
 
     @property
-    def future(self) -> Union[Future, Tuple[Future, ...]]:
+    def future(self) -> Union[Future, tuple[Future, ...]]:
         """Return the futures of the command.
 
         Note that by default, a single future is returned, but children
         of this class (e.g. ``CmdLogSignal``) may opt to return a tuple
         of futures.
-
         """
         return self._future
 
     def serialize(self) -> dict:
+        """Return a representation of the command data as ``dict``.
+
+        By *command data*, we mean all data relevant to the execution of
+        the command on the client device (most likely, this will be all
+        the fields of the implementation *except* the future). The job
+        id must be stored under the key `'job'`.
+
+        Default implementation, may be overridden by subclasses.
+        """
         data = self._serialize()
         data['job'] = self.job
         return data
@@ -328,6 +494,7 @@ class Command(abc.ABC):
         Returns:
             ``True`` if job is done, ``False`` otherwise.
 
+        Default implementation, may be overridden by subclasses.
         """
         if self._error(self._future, reply):
             return True
@@ -335,15 +502,35 @@ class Command(abc.ABC):
         if reply['command'] == _RX + self.serialize()['command']:
             return self._update(reply)
 
-    @abc.abstractmethod
     def _serialize(self) -> dict:
+        """Serialize the command data *without* the job id and future.
+
+        This is a utility method, used by the default implementation of
+        ``serialize``.
+        """
         pass
 
     def _update(self, reply: dict) -> bool:
+        """Mark the command's future as done.
+
+        Returns: ``True``
+
+        This is a utility method, used by the default implementation of
+        ``update``.
+        """
         self._future.set_result()
         return True
 
-    def _error(self, future, reply) -> bool:
+    def _error(self, future: Future, reply: dict) -> bool:
+        """Forward any error from ``reply`` to ``future``.
+
+        Returns:
+            ``True`` if the reply contained an error, ``False``
+            otherwise
+
+        This is a utility method, used by the default implementation of
+        ``update``.
+        """
         command_type = reply['command']  # TODO Raise error if command field is missing!
         if (command_type == _ERR + self.serialize()['command']
                 or command_type == 'ERR_COMMAND_INVALID'):
