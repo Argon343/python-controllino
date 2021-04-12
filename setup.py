@@ -9,7 +9,7 @@ with open('README.md') as readme:
 
 setuptools.setup(
     name='python-controllino',
-    version='0.0.0',
+    version='0.1.0',
     author="Forschungs- und Entwicklungszentrum Fachhochschule Kiel GmbH",
     long_description=long_description,
     long_description_content_type='text/markdown',
