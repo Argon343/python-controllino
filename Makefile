@@ -21,13 +21,14 @@ venv:
 
 .PHONY: sphinx
 sphinx:
-	sphinx-apidoc --force --private --separate -o docs/source src/pylab
-	cd docs/ && make html
+	sphinx-apidoc --module-first --force --private --separate -o docs/build src
+	cd docs && make html
 
 .PHONY: clean
 clean:
 	rm -fr build
 	rm -fr .venv
+	rm -fr docs/build
 
 .PHONY: install
 install:
