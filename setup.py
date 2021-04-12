@@ -9,7 +9,7 @@ with open('README.md') as readme:
 
 setuptools.setup(
     name='pycontrollino',
-    version='0.0.0',
+    version='0.1.0',
     author='M. Kliemann',
     author_email='mail@maltekliemann.com',
     description='Python API for USB devices running 8tronix controllino protocol',
