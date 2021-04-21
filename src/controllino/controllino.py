@@ -34,6 +34,10 @@ class ControllinoError(Exception):
     """Raise on server-side runtime error."""
 
 
+class DecodeError(ControllinoError):
+    """Raise on protocol error."""
+
+
 # serial device {{{
 
 
@@ -253,12 +257,12 @@ class _MessageThread(threading.Thread):
         with self._serial_lock:
             self._buffer += self._serial.read(byte_count)
 
-        chunks = self._buffer.split(DELIM)
+        chunks: list[bytes] = self._buffer.split(DELIM)
         self._buffer = chunks.pop(-1)
         chunks = [each + DELIM for each in chunks]
 
         assert all(each.endswith(DELIM) for each in chunks)
-        replies = [json.loads(each) for each in chunks]  # Note: json.JSONDecodeError is considered a logic error and will result in termination of the loop.  # noqa: E501
+        replies = [_decode(each) for each in chunks]  # Note: json.JSONDecodeError is considered a logic error and will result in termination of the loop.  # noqa: E501
         for each in replies:
             self._receive(each)
 
@@ -347,6 +351,35 @@ def _encode(data: dict) -> bytes:
     msg += '\r\n'
     msg = msg.encode('utf-8')
     return msg
+
+
+def _decode(msg: bytes) -> dict:
+    """Decode JSON string with error correction.
+
+    Args:
+        msg: The JSON string to be decoded
+
+    Error correction works as follows: If straightforward encoding
+    fails, we employ certain heuristics which correct faulty messages.
+    """
+    _msg = msg  # Copy for error logging purposes.
+    retry = True
+    while True:
+        try:
+            return json.loads(msg)
+        except json.decoder.JSONDecodeError as e:
+            if not retry:
+                raise DecodeError(
+                    'Failed to decode the following message: '
+                    + _msg.decode('utf-8')
+                    + '\n\n Underlying json.decode.JSONDecodeError error: '
+                    + str(e)
+                )
+            retry = False
+            # Try to find a usable JSON mapping in the message.
+            left = msg.find(b'{')
+            right = msg.rfind(b'}')
+            msg = msg[left:right+1]
 
 
 class Future:
