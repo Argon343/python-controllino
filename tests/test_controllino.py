@@ -326,3 +326,18 @@ class TestBase:
         assert done2
         assert future1.result() == value1
         assert future2.result() == value2
+
+    def test_error_correction(self, base):
+        future = base.submit(controllino.CmdGetSignal('A2'))
+        assert not future.wait(WAIT)
+
+        with base._serial_lock:
+            value = -0.12
+            cmd = {'command': 'RX_GET_INPUT',
+                   'pin': 'A2', 'level': value, 'job': 1}
+            flawed_msg = b'_' + controllino._encode(cmd)
+            base._serial.put(flawed_msg)
+
+        assert future.wait(WAIT)
+        base.process_errors()
+        assert future.result() == value
