@@ -22,6 +22,7 @@ _READY = 'READY'
 _ERROR = 'ERROR'  # General error message, not bound to specific job
 _ERR = 'ERR_'  # Error message bound to job
 _INVALID = _ERR + '_COMMAND_INVALID'
+_DEBUG = 'DEBUG'
 GRAIN = 0.001
 DELIM = b'\r\n'
 NOT_FOUND = object()
@@ -53,16 +54,23 @@ class Base:
 
     def __init__(self,
                  ser: serial.Serial,
-                 error_callback: Optional[Callable[[Exception], None]] = None) -> None:
+                 error_callback: Optional[Callable[[Exception], None]] = None,
+                 debug_callback: Optional[Callable[[dict], None]] = None) -> None:
         """Args:
             ser: The underlying serial device
             error_callback:
                 Function to call on critical server-side error
+            debug_callback:
+                A callback function for debug messages received from the
+                device
 
         By default, the error callback will write to the API's error
         queue, which should be checked regularly by the consumer using
         ``process_errors``. By *critical* server-side error we mean an
         error that caused one of the daemon threads to terminate.
+
+        By default, the debug callback will write any debug information
+        into ``stdout``.
         """
         self._serial = ser
         self._serial_lock = threading.Lock()
@@ -73,12 +81,15 @@ class Base:
         self._stop_event = threading.Event()
         if error_callback is None:
             def error_callback(e): return self._error_queue.put(e)
+        if debug_callback is None:
+            def debug_callback(data): print(data)
         self._message_thread = _MessageThread(self._serial,
                                               self._serial_lock,
                                               self._pending,
                                               self._pending_lock,
                                               self._stop_event,
-                                              error_callback)
+                                              error_callback,
+                                              debug_callback)
         self._command_thread = _CommandThread(self._serial,
                                               self._serial_lock,
                                               self._cmd_queue,
@@ -207,7 +218,8 @@ class _MessageThread(threading.Thread):
                  pending: list[Command],
                  pending_lock: threading.Lock,
                  stop_event: threading.Event,
-                 error_callback: Optional[Callable[[Exception], None]] = None) -> None:
+                 error_callback: Optional[Callable[[Exception], None]],
+                 debug_callback: Optional[Callable[[str], None]] = None) -> None:
         """Args:
             ser: The underlying serial device
             serial_lock:
@@ -219,6 +231,9 @@ class _MessageThread(threading.Thread):
             stop_event: An event for terminating the daemon
             error_callback:
                 A callback function for critical errors in this daemon
+            debug_callback:
+                A callback function for debug messages received from the
+                device
         """
         super().__init__()
         self.daemon = True
@@ -229,6 +244,7 @@ class _MessageThread(threading.Thread):
         self._pending = pending
         self._pending_lock = pending_lock
         self._error_callback = error_callback
+        self._debug_callback = debug_callback
         self._buffer = b''
 
     def run(self):
@@ -274,6 +290,8 @@ class _MessageThread(threading.Thread):
             if command_type.startswith(_ERROR):  # General error
                 self._error_callback(ControllinoError(
                     f'controllino: received error msg: {reply}'))
+            if command_type == _DEBUG:
+                self._debug_callback(reply['info'])
             else:
                 self._error_callback(ControllinoError(
                     f'controllino: received out-of-turn reply that is not an error: {reply}'))
