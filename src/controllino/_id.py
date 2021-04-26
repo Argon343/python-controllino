@@ -17,7 +17,7 @@ class IdManager:
 
     def __init__(self, size: int = 2**8 - 1) -> None:
         """Args:
-            size: The maximum number of IDs
+        size: The maximum number of IDs
         """
         self._size = size
         self._queue = list(range(size))
@@ -30,7 +30,7 @@ class IdManager:
         """
         # FIXME Raise a more specific error on empty queue!
         if not self._queue:
-            raise RuntimeError('maximum number of jobs exceeded')
+            raise RuntimeError("maximum number of jobs exceeded")
         return Id(self._queue.pop(0), self)
 
     def put(self, value) -> None:
@@ -50,9 +50,9 @@ class Id:
 
     def __init__(self, value: int, manager: IdManager) -> None:
         """Args:
-            value: The wrapped value
-            manager:
-                A reference to the manager that ``self`` was issued from
+        value: The wrapped value
+        manager:
+            A reference to the manager that ``self`` was issued from
         """
         self._value = value
         self._manager = manager
@@ -76,7 +76,6 @@ class Id:
 
 # FIXME Maybe just serialize ``id.value`` directly?
 class JsonEncoder(json.encoder.JSONEncoder):
-
     def default(self, o):
         """Serialize an ``Id`` by serializing its wrapped value."""
         if isinstance(o, Id):
