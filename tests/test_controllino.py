@@ -341,3 +341,13 @@ class TestBase:
         assert future.wait(WAIT)
         base.process_errors()
         assert future.result() == value
+
+    def test_debug(self, base, capsys):
+        with base._serial_lock:
+            cmd = {'command': 'DEBUG', 'info': 'foo'}
+            base._serial.put(controllino._encode(cmd))
+
+        time.sleep(WAIT)
+        base.process_errors()
+        captured = capsys.readouterr()
+        assert captured.out == 'foo\n'
