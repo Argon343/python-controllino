@@ -6,4 +6,5 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # controllino-stage
 
-Run `make` to test and `make install` to install.
+Run `make venv && make` to create a virtual environment for testing and run the
+test suite. Run `pip install .` to install.

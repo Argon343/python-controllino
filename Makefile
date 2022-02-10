@@ -23,7 +23,7 @@ endef
 endif
 
 .PHONY: default
-default: venv
+default:
 	$(PYTEST) -vv tests/
 
 # If virtualenv doesn't exist, create it, then fetch dependencies.
@@ -38,18 +38,8 @@ endif
 	$(PIP) install -r requirements.txt
 	$(PYTHON) setup.py install
 
-.PHONY: sphinx
-sphinx:
-	sphinx-apidoc --module-first --force --private --separate -o docs/build src
-	cd docs && make html
-
 .PHONY: clean
 clean:
 	python setup.py clean
 	$(call delete_dir,build)
 	$(call delete_dir,.venv)
-	$(call delete_dir,docs/build)
-
-.PHONY: install
-install:
-	python setup.py install
