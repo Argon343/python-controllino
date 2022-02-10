@@ -10,10 +10,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
 [![REUSE license check](https://github.com/maltekliemann/python-controllino/actions/workflows/license.yaml/badge.svg)](https://github.com/maltekliemann/python-controllino/actions/workflows/license.yaml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-python-controllino is a python module for using serial devices that implement the
-8tronix Controllino Protocol.
+python-controllino is a python module for using serial devices that implement
+the 8tronix Controllino Protocol.
 
-For documentation, please refer to the docstrings in `src/controllino` or the tests.
+For documentation, please refer to the docstrings in `src/controllino` or the
+tests.
 
 ## Technical notes for devs
 
@@ -33,3 +34,10 @@ test suite.
 -   The Python code, specification and documentation is licensed under
     GPL-3.0-or-later, all examples are unlicensed; we follow the
     [REUSE-3.0 specification](https://reuse.software/spec/)
+
+### Workflow
+
+We use the standard
+[gitflow](https://nvie.com/posts/a-successful-git-branching-model/) branching
+model. Pull requests should only go into the `develop` branch. The `develop`
+branch will be regularly merged into `master`.
