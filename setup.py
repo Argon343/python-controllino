@@ -9,8 +9,9 @@ with open("README.md") as readme:
 
 setuptools.setup(
     name="python-controllino",
-    version="0.1.2",
+    version="0.1.3",
     author="Forschungs- und Entwicklungszentrum Fachhochschule Kiel GmbH",
+    description="Python API for USB devices running 8tronix Controllino Protocol",
     long_description=long_description,
     long_description_content_type="text/markdown",
     license="GPL-3.0-or-later",
