@@ -16,15 +16,15 @@ from typing import Callable, TypeVar
 
 from controllino import _id
 
-_VALUE_TYPE = TypeVar('ValueType')
-_RX = 'RX_'
-_READY = 'READY'
-_ERROR = 'ERROR'  # General error message, not bound to specific job
-_ERR = 'ERR_'  # Error message bound to job
-_INVALID = _ERR + '_COMMAND_INVALID'
-_DEBUG = 'DEBUG'
+_VALUE_TYPE = TypeVar("ValueType")
+_RX = "RX_"
+_READY = "READY"
+_ERROR = "ERROR"  # General error message, not bound to specific job
+_ERR = "ERR_"  # Error message bound to job
+_INVALID = _ERR + "_COMMAND_INVALID"
+_DEBUG = "DEBUG"
 GRAIN = 0.001
-DELIM = b'\r\n'
+DELIM = b"\r\n"
 NOT_FOUND = object()
 verbose = False
 
@@ -52,10 +52,12 @@ class Base:
     which handle incoming and outgoing messages, respectively.
     """
 
-    def __init__(self,
-                 ser: serial.Serial,
-                 error_callback: Optional[Callable[[Exception], None]] = None,
-                 debug_callback: Optional[Callable[[dict], None]] = None) -> None:
+    def __init__(
+        self,
+        ser: serial.Serial,
+        error_callback: Optional[Callable[[Exception], None]] = None,
+        debug_callback: Optional[Callable[[dict], None]] = None,
+    ) -> None:
         """Args:
             ser: The underlying serial device
             error_callback:
@@ -80,21 +82,31 @@ class Base:
         self._error_queue = queue.Queue()
         self._stop_event = threading.Event()
         if error_callback is None:
-            def error_callback(e): return self._error_queue.put(e)
+
+            def error_callback(e):
+                return self._error_queue.put(e)
+
         if debug_callback is None:
-            def debug_callback(data): print(data)
-        self._message_thread = _MessageThread(self._serial,
-                                              self._serial_lock,
-                                              self._pending,
-                                              self._pending_lock,
-                                              self._stop_event,
-                                              error_callback,
-                                              debug_callback)
-        self._command_thread = _CommandThread(self._serial,
-                                              self._serial_lock,
-                                              self._cmd_queue,
-                                              self._stop_event,
-                                              error_callback)
+
+            def debug_callback(data):
+                print(data)
+
+        self._message_thread = _MessageThread(
+            self._serial,
+            self._serial_lock,
+            self._pending,
+            self._pending_lock,
+            self._stop_event,
+            error_callback,
+            debug_callback,
+        )
+        self._command_thread = _CommandThread(
+            self._serial,
+            self._serial_lock,
+            self._cmd_queue,
+            self._stop_event,
+            error_callback,
+        )
         self._id_manager = _id.IdManager()
         self._message_thread.start()
         self._command_thread.start()
@@ -212,28 +224,30 @@ class _MessageThread(threading.Thread):
     # FIXME Don't share ``pending`` and ``pending_lock`` with the
     # ``Base`` object. Instead, encapsulate ``pending(_lock)?`` and use
     # a ``push`` method to thread-safely enqueue commands.
-    def __init__(self,
-                 ser: serial.Serial,
-                 serial_lock: threading.Lock,
-                 pending: list[Command],
-                 pending_lock: threading.Lock,
-                 stop_event: threading.Event,
-                 error_callback: Optional[Callable[[Exception], None]],
-                 debug_callback: Optional[Callable[[str], None]] = None) -> None:
+    def __init__(
+        self,
+        ser: serial.Serial,
+        serial_lock: threading.Lock,
+        pending: list[Command],
+        pending_lock: threading.Lock,
+        stop_event: threading.Event,
+        error_callback: Optional[Callable[[Exception], None]],
+        debug_callback: Optional[Callable[[str], None]] = None,
+    ) -> None:
         """Args:
-            ser: The underlying serial device
-            serial_lock:
-                A lock for thread-safe access to the underlying serial
-                device
-            pending:
-                A list of pending responses from the client device that
-                the daemon must handle
-            stop_event: An event for terminating the daemon
-            error_callback:
-                A callback function for critical errors in this daemon
-            debug_callback:
-                A callback function for debug messages received from the
-                device
+        ser: The underlying serial device
+        serial_lock:
+            A lock for thread-safe access to the underlying serial
+            device
+        pending:
+            A list of pending responses from the client device that
+            the daemon must handle
+        stop_event: An event for terminating the daemon
+        error_callback:
+            A callback function for critical errors in this daemon
+        debug_callback:
+            A callback function for debug messages received from the
+            device
         """
         super().__init__()
         self.daemon = True
@@ -245,7 +259,7 @@ class _MessageThread(threading.Thread):
         self._pending_lock = pending_lock
         self._error_callback = error_callback
         self._debug_callback = debug_callback
-        self._buffer = b''
+        self._buffer = b""
 
     def run(self):
         # FIXME The catch-all is for logic errors. Design is meh and not
@@ -278,32 +292,46 @@ class _MessageThread(threading.Thread):
         chunks = [each + DELIM for each in chunks]
 
         assert all(each.endswith(DELIM) for each in chunks)
-        replies = [_decode(each) for each in chunks]  # Note: json.JSONDecodeError is considered a logic error and will result in termination of the loop.  # noqa: E501
+        replies = [
+            _decode(each) for each in chunks
+        ]  # Note: json.JSONDecodeError is considered a logic error and will result in termination of the loop.  # noqa: E501
         for each in replies:
             self._receive(each)
 
     def _receive(self, reply):
-        command_type = reply['command']  # TODO Raise error if command field is missing!
+        command_type = reply["command"]  # TODO Raise error if command field is missing!
 
-        job = reply.get('job')
+        job = reply.get("job")
         if job is None:
             if command_type.startswith(_ERROR):  # General error
-                self._error_callback(ControllinoError(
-                    f'controllino: received error msg: {reply}'))
+                self._error_callback(
+                    ControllinoError(f"controllino: received error msg: {reply}")
+                )
             if command_type == _DEBUG:
-                self._debug_callback(reply['info'])
+                self._debug_callback(reply["info"])
             else:
-                self._error_callback(ControllinoError(
-                    f'controllino: received out-of-turn reply that is not an error: {reply}'))
+                self._error_callback(
+                    ControllinoError(
+                        f"controllino: received out-of-turn reply that is not an error: {reply}"
+                    )
+                )
             return
 
         with self._pending_lock:
-            index = next((index for index, each in enumerate(self._pending)
-                          if each.job.value == job),
-                         None)
+            index = next(
+                (
+                    index
+                    for index, each in enumerate(self._pending)
+                    if each.job.value == job
+                ),
+                None,
+            )
             if index is None:
-                self._error_callback(ControllinoError(
-                    f'controllino: receiver reply with invalid job id: {reply}'))
+                self._error_callback(
+                    ControllinoError(
+                        f"controllino: receiver reply with invalid job id: {reply}"
+                    )
+                )
                 return
             cmd = self._pending[index]
 
@@ -319,21 +347,23 @@ class _CommandThread(threading.Thread):
     device.
     """
 
-    def __init__(self,
-                 ser: serial.Serial,
-                 serial_lock: threading.Lock,
-                 cmd_queue: queue.Queue,
-                 stop_event: threading.Event,
-                 error_callback: Optional[Callable[[Exception], None]] = None) -> None:
+    def __init__(
+        self,
+        ser: serial.Serial,
+        serial_lock: threading.Lock,
+        cmd_queue: queue.Queue,
+        stop_event: threading.Event,
+        error_callback: Optional[Callable[[Exception], None]] = None,
+    ) -> None:
         """Args:
-            ser: The underlying serial device
-            serial_lock:
-                A lock for thread-safe access to the underlying serial
-                device
-            cmd_queue: A queue of submitted commands
-            stop_event: An event for terminating the daemon
-            error_callback:
-                A callback function for critical errors in this daemon
+        ser: The underlying serial device
+        serial_lock:
+            A lock for thread-safe access to the underlying serial
+            device
+        cmd_queue: A queue of submitted commands
+        stop_event: An event for terminating the daemon
+        error_callback:
+            A callback function for critical errors in this daemon
         """
         super().__init__()
         self.daemon = True
@@ -366,8 +396,8 @@ def _encode(data: dict) -> bytes:
 
     """
     msg = json.dumps(data, cls=_id.JsonEncoder)
-    msg += '\r\n'
-    msg = msg.encode('utf-8')
+    msg += "\r\n"
+    msg = msg.encode("utf-8")
     return msg
 
 
@@ -388,16 +418,16 @@ def _decode(msg: bytes) -> dict:
         except json.decoder.JSONDecodeError as e:
             if not retry:
                 raise DecodeError(
-                    'Failed to decode the following message: '
-                    + _msg.decode('utf-8')
-                    + '\n\n Underlying json.decode.JSONDecodeError error: '
+                    "Failed to decode the following message: "
+                    + _msg.decode("utf-8")
+                    + "\n\n Underlying json.decode.JSONDecodeError error: "
                     + str(e)
                 )
             retry = False
             # Try to find a usable JSON mapping in the message.
-            left = msg.find(b'{')
-            right = msg.rfind(b'}')
-            msg = msg[left:right+1]
+            left = msg.find(b"{")
+            right = msg.rfind(b"}")
+            msg = msg[left : right + 1]
 
 
 class Future:
@@ -536,7 +566,7 @@ class Command(abc.ABC):  # FIXME Should be called AbstractCommand...?
         Default implementation, may be overridden by subclasses.
         """
         data = self._serialize()
-        data['job'] = self.job
+        data["job"] = self.job
         return data
 
     def update(self, reply: dict) -> bool:
@@ -550,7 +580,7 @@ class Command(abc.ABC):  # FIXME Should be called AbstractCommand...?
         if self._error(self._future, reply):
             return True
 
-        if reply['command'] == _RX + self.serialize()['command']:
+        if reply["command"] == _RX + self.serialize()["command"]:
             return self._update(reply)
 
     def _serialize(self) -> dict:
@@ -582,100 +612,93 @@ class Command(abc.ABC):  # FIXME Should be called AbstractCommand...?
         This is a utility method, used by the default implementation of
         ``update``.
         """
-        command_type = reply['command']  # TODO Raise error if command field is missing!
-        if (command_type == _ERR + self.serialize()['command']
-                or command_type == 'ERR_COMMAND_INVALID'):
-            future.set_error(ControllinoError(f'controllino error: {reply}'))
+        command_type = reply["command"]  # TODO Raise error if command field is missing!
+        if (
+            command_type == _ERR + self.serialize()["command"]
+            or command_type == "ERR_COMMAND_INVALID"
+        ):
+            future.set_error(ControllinoError(f"controllino error: {reply}"))
             return True
 
         return False  # FIXME Ignore?
 
 
 class CmdGetSignal(Command):
-
     def __init__(self, signal: str):
         super().__init__()
         self._signal = signal
 
     def _update(self, reply: dict) -> bool:
-        self.future.set_result(reply['level'])
+        self.future.set_result(reply["level"])
         return True
 
     def _serialize(self) -> dict:
-        return {'command': 'GET_INPUT', 'pin': self._signal}
+        return {"command": "GET_INPUT", "pin": self._signal}
 
 
 class CmdSetSignal(Command):
-
     def __init__(self, signal: str, value: Any) -> None:
         super().__init__()
         self._signal = signal
         self._value = value
 
     def _serialize(self) -> dict:
-        return {'command': 'SET_OUTPUT', 'pin': self._signal, 'level': self._value}
+        return {"command": "SET_OUTPUT", "pin": self._signal, "level": self._value}
 
 
 class CmdReady(Command):
-
     def _serialize(self) -> dict:
-        return {'command': _READY}
+        return {"command": _READY}
 
 
 class CmdSetPinMode(Command):
-
     def __init__(self, pin: str, mode: str) -> None:
         super().__init__()
         self._pin = pin
         self._mode = mode
 
     def _serialize(self) -> dict:
-        return {'command': 'SET_PIN_MODE', 'pin': self._pin, 'mode': self._mode}
+        return {"command": "SET_PIN_MODE", "pin": self._pin, "mode": self._mode}
 
 
 class CmdGetPinMode(Command):
-
     def __init__(self, pin: str) -> None:
         super().__init__()
         self._pin = pin
 
     def _update(self, reply: dict) -> bool:
-        self.future.set_result(reply['mode'])
+        self.future.set_result(reply["mode"])
         return True
 
     def _serialize(self) -> dict:
-        return {'command': 'GET_PIN_MODE', 'pin': self._pin}
+        return {"command": "GET_PIN_MODE", "pin": self._pin}
 
 
 class CmdLoadPinModes(Command):
-
     def _serialize(self) -> dict:
-        return {'command': 'LOAD_PIN_MODES'}
+        return {"command": "LOAD_PIN_MODES"}
 
 
 class CmdSavePinModes(Command):
-
     def _serialize(self) -> dict:
-        return {'command': 'SAVE_PIN_MODES'}
+        return {"command": "SAVE_PIN_MODES"}
 
 
 class CmdResetPinModes(Command):
-
     def _serialize(self) -> dict:
-        return {'command': 'RESET_PIN_MODES'}
+        return {"command": "RESET_PIN_MODES"}
 
 
 class CmdTriggerPulse(Command):
-
     def __init__(self, pin: str) -> None:
         super().__init__()
         self._pin = pin
 
     def _serialize(self) -> dict:
-        return {'command': 'TRIGGER_PULSE', 'pin': self._pin}
+        return {"command": "TRIGGER_PULSE", "pin": self._pin}
 
 
-TimeSeries = collections.namedtuple('TimeSeries', ('time', 'values'))
+TimeSeries = collections.namedtuple("TimeSeries", ("time", "values"))
 
 
 class CmdLogSignal(Command):
@@ -722,25 +745,24 @@ class CmdLogSignal(Command):
         if self._error(self._future[1], reply):
             return True
 
-        self._time.append(reply['time'])
-        self._values.append(reply['value'])
-        done = reply['done']
+        self._time.append(reply["time"])
+        self._values.append(reply["value"])
+        done = reply["done"]
         if done:
             self._future[1].set_result(TimeSeries(self._time, self._values))
         return done
 
     def _serialize(self) -> dict:
-        return {'command': 'LOG_SIGNAL', 'pin': self._signal, 'period': self._period}
+        return {"command": "LOG_SIGNAL", "pin": self._signal, "period": self._period}
 
 
 class CmdEndLogSignal(Command):
-
     def __init__(self, signal: str) -> None:
         super().__init__()
         self._signal = signal
 
     def _serialize(self) -> dict:
-        return {'command': 'END_LOG_SIGNAL', 'pin': self._signal}
+        return {"command": "END_LOG_SIGNAL", "pin": self._signal}
 
 
 # }}} commands
