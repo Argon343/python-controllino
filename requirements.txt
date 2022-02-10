@@ -2,8 +2,7 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-pytest==5.4.3
-pytest-timeout==1.4.2
-pytest-mock==3.1.1
+pytest==7.0.0
+pytest-mock==3.7.0
+pytest-timeout==2.0.1
 pyserial==3.5b0
-sphinx_rtd_theme
